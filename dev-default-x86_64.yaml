@@ -54,13 +54,8 @@ propagateProxyEnv: true
 caCerts:
   removeDefaults: false
 plain: false
-timezone: America/New_York
 nestedVirtualization: false
 user:
-  name: jerry
-  comment: Jerry
-  home: /home/jerry.guest
   shell: /bin/bash
-  uid: 1000
   passwordlessSudo: true
 tpm: false
