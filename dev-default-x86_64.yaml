@@ -37,6 +37,11 @@ audio:
 video:
   display: none
 upgradePackages: false
+provision:
+  - mode: system
+    file: scripts/install-zsh.sh
+  - mode: system
+    file: scripts/install-dev-tools.sh
 containerd:
   system: false
   user: true
@@ -56,6 +61,7 @@ caCerts:
 plain: false
 nestedVirtualization: false
 user:
+  # Bootstrap with the image's shell; provisioning installs and selects zsh.
   shell: /bin/bash
   passwordlessSudo: true
 tpm: false
