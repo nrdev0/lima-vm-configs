@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+sudo apt update
+sudo apt upgrade
+
+sudo apt install curl unzip zip
+
+# setup sdkman and install Eclipse Temurin Java 25.0.4
+curl -fsSL "https://get.sdkman.io" | bash
+
+(
+    set +u
+    source "$HOME/.sdkman/bin/sdkman-init.sh"
+    sdk version
+    sdk install java 25.0.4-tem
+)
