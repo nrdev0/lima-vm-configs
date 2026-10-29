@@ -24,6 +24,12 @@
         state: directory
         mode: '0755'
 
+    - name: Install the interactive Git and GitHub setup command
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/setup-git"
+        dest: "{{ uv_bin_dir }}/setup-git"
+        mode: '0755'
+
     - name: Set zsh as the guest user's login shell
       become: true
       ansible.builtin.user:

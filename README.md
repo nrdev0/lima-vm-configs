@@ -26,6 +26,8 @@ limactl start --name=dev-python ./dev-python-aarch64.yaml
 # limactl start --name=dev-python ./dev-python-x86_64.yaml
 bash scripts/provision dev-python
 limactl shell dev-python
+# Inside the guest, optionally configure Git identity and GitHub authentication:
+setup-git
 ```
 
 Both `dev-python` configurations target native macOS virtualization with VZ.
@@ -78,6 +80,8 @@ from the repeatable Ansible tool setup; changing the VM type requires recreation
 `scripts/provision` requires a running VM. It copies the playbook, repository
 dotfiles, and guest bootstrap into a temporary guest directory, applies them,
 and removes that copy.
+It also installs `setup-git` in `~/.local/bin` so the interactive command remains
+available after the temporary copy is removed.
 No host Ansible installation or repository mount is required. Run it as the
 normal Lima user with passwordless sudo enabled, as in these VM definitions.
 
@@ -105,6 +109,34 @@ backs up existing files when replacing them. Edit the repository copies and
 reprovision to apply changes; edits made only in the guest will be overwritten.
 The zsh setup adds `~/.local/bin` to PATH, enables completion and persistent
 history, and uses a basic prompt. New tmux windows use zsh.
+
+Git and GitHub CLI (`gh`) are installed by Ansible. Run `setup-git` inside an
+interactive guest shell, without sudo, to configure them. The command offers:
+
+- Commit display name and email, with existing guest Git settings as defaults.
+  Use your verified GitHub email or the `noreply` address from your GitHub email
+  settings. You can skip identity configuration to preserve it unchanged.
+- Browser sign-in for HTTPS, reuse of an existing GitHub CLI login, or skipping
+  authentication. Complete browser sign-in on your Mac using the URL and device
+  code shown in the terminal. An existing valid login is the default when found.
+
+Identity configuration sets `user.useConfigOnly=true` to prevent Git from
+guessing an identity, and defaults new repositories to `main` if no global
+default branch is already configured. Repository-specific settings still take
+precedence. Other Git preferences are preserved.
+
+After sign-in, `setup-git` checks authentication and makes GitHub CLI the HTTPS
+credential helper for GitHub. Use `gh repo clone OWNER/REPO` or an HTTPS URL such
+as `git clone https://github.com/OWNER/REPO.git`. Existing SSH remotes are not
+converted. Authentication persists across VM restarts; recreating the guest
+requires signing in again. On a guest without a system credential store, GitHub
+CLI may store its token in its guest configuration file. Tokens are not passed
+through Ansible or saved in this repository.
+
+Git setup is optional and separate from provisioning. Routine provisioning never
+prompts for credentials or changes commit identity. To adjust identity or sign
+in later, run `setup-git` again. Your Mac's Git settings are not copied into the
+guest automatically.
 
 For a new project inside the guest:
 

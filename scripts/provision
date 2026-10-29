@@ -18,7 +18,7 @@ trap cleanup EXIT
 
 for attempt in 1 2; do
     work_dir=$(limactl shell "$vm_name" mktemp -d /tmp/lima-dev-setup.XXXXXXXXXX)
-    tar -C "$repo_dir" -cf - ansible dotfiles scripts/setup | \
+    tar -C "$repo_dir" -cf - ansible dotfiles scripts/setup scripts/setup-git | \
         limactl shell "$vm_name" tar -xf - -C "$work_dir"
 
     ansible_options=("$@")

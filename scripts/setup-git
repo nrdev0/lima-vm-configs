@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Run interactively inside the guest as the regular Lima user.
+set -euo pipefail
+
+if [[ "$(id -u)" == 0 ]]; then
+    echo 'Run setup-git as the regular guest user, without sudo.' >&2
+    exit 1
+fi
+if [[ ! -t 0 || ! -t 1 ]]; then
+    echo 'Open an interactive guest shell with limactl shell VM_NAME, then run setup-git.' >&2
+    exit 1
+fi
+for command_name in git gh; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+        echo "$command_name is missing. Run the host provisioning script first." >&2
+        exit 1
+    fi
+done
+
+echo 'Git commit identity is separate from your GitHub login.'
+echo 'These settings apply to your guest user; repositories can override them.'
+while true; do
+    read -r -p 'Configure commit identity? [Y/n] ' configure_identity
+    case "$configure_identity" in
+        ''|y|Y|yes|YES) configure_identity=yes; break ;;
+        n|N|no|NO) configure_identity=no; break ;;
+        *) echo 'Enter y or n.' ;;
+    esac
+done
+
+if [[ "$configure_identity" == yes ]]; then
+    current_name=$(git config --global --get user.name || true)
+    current_email=$(git config --global --get user.email || true)
+    while true; do
+        read -r -p "Commit display name${current_name:+ [$current_name]}: " commit_name
+        commit_name=${commit_name:-$current_name}
+        [[ -n "${commit_name//[[:space:]]/}" ]] && break
+        echo 'Enter a name to include in your commits.'
+    done
+    echo 'Use a verified GitHub email or your GitHub noreply address from https://github.com/settings/emails.'
+    while true; do
+        read -r -p "Commit email${current_email:+ [$current_email]}: " commit_email
+        commit_email=${commit_email:-$current_email}
+        [[ -n "${commit_email//[[:space:]]/}" ]] && break
+        echo 'Enter an email to include in your commits.'
+    done
+    git config --global user.name "$commit_name"
+    git config --global user.email "$commit_email"
+    git config --global user.useConfigOnly true
+    if ! git config --global --get init.defaultBranch >/dev/null; then
+        git config --global init.defaultBranch main
+    fi
+    printf 'Commit identity saved: %s <%s>\n' "$commit_name" "$commit_email"
+fi
+
+default_auth=1
+if gh auth status --hostname github.com >/dev/null 2>&1; then
+    default_auth=2
+    echo 'An existing GitHub login is available.'
+fi
+echo
+echo 'GitHub authentication:'
+echo '  1) Sign in through your browser (HTTPS)'
+echo '  2) Use an existing GitHub CLI login (HTTPS)'
+echo '  3) Skip GitHub authentication'
+while true; do
+    read -r -p "Choose [$default_auth]: " auth_choice
+    auth_choice=${auth_choice:-$default_auth}
+    case "$auth_choice" in
+        1)
+            echo 'Follow the device-login instructions below in your Mac browser.'
+            gh auth login --hostname github.com --git-protocol https --web
+            break
+            ;;
+        2) break ;;
+        3) echo 'GitHub authentication skipped. Run setup-git again whenever needed.'; exit 0 ;;
+        *) echo 'Choose 1, 2, or 3.' ;;
+    esac
+done
+
+# Verify the login before making Git use it for HTTPS credentials.
+gh auth status --hostname github.com
+gh auth setup-git --hostname github.com
+gh config set git_protocol https --host github.com
+echo 'Git and GitHub CLI are configured for HTTPS access to github.com.'
+echo 'Repository access depends on the permissions of your GitHub account.'
