@@ -55,14 +55,13 @@ OS packages before configuring development tools. It records success in
 Existing guests without this marker also upgrade on their next provisioning run.
 Lima's `upgradePackages: false` keeps upgrades from running on every boot.
 
-If Ubuntu requires a reboot, provisioning stops before installing tools. Restart
-the guest and rerun provisioning; the completed upgrade will be skipped:
-
-```bash
-limactl stop dev-python
-limactl start dev-python
-bash scripts/provision dev-python
-```
+If Ubuntu requires a reboot, the host's `scripts/provision` automatically stops
+and starts the VM, waits for Lima to report it ready, and resumes setup before
+installing tools. The completed OS upgrade is skipped on the resumed run.
+This also handles guests left at the reboot-required error by an earlier run:
+just rerun `bash scripts/provision dev-python` from the host.
+Automatic recovery allows one restart per invocation; other provisioning errors
+stop immediately. A restart disconnects any active guest sessions.
 
 For later maintenance, explicitly request another upgrade:
 
@@ -70,7 +69,8 @@ For later maintenance, explicitly request another upgrade:
 bash scripts/provision dev-python -e force_os_upgrade=true
 ```
 
-If that run requires a reboot, restart and rerun without `force_os_upgrade=true`.
+If that run requires a reboot, provisioning resumes with `force_os_upgrade=false`
+so the explicit upgrade is not repeated.
 
 Review CPU, memory, and disk settings before creation. VM settings are separate
 from the repeatable Ansible tool setup; changing the VM type requires recreation.
@@ -129,6 +129,9 @@ repeatable interpreter selection. Changing Python versions leaves older
 installations and project version choices in place.
 
 For a repository already available inside the guest, use `bash scripts/setup`
-directly. Ansible options are forwarded by both scripts. `--check --diff` is most
-useful after the first successful setup; it still bootstraps Ansible if missing,
-and a fresh guest cannot fully preview uv and Python installation.
+directly. This direct guest command still stops with manual restart instructions
+when a reboot is required; automatic restart is handled by the host script.
+Ansible options are forwarded by both scripts. `--check --diff` never triggers
+an automatic restart and is most useful after the first successful setup; it
+still bootstraps Ansible if missing, and a fresh guest cannot fully preview uv
+and Python installation.

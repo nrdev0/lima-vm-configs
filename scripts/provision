@@ -8,11 +8,45 @@ fi
 vm_name="$1"
 shift
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-tar -C "$repo_dir" -cf - ansible dotfiles scripts/setup | \
-    limactl shell "$vm_name" bash -c '
-        set -euo pipefail
-        work_dir=$(mktemp -d)
-        trap '\''rm -rf -- "$work_dir"'\'' EXIT
-        tar -xf - -C "$work_dir"
-        bash "$work_dir/scripts/setup" "$@"
-    ' -- "$@"
+work_dir=
+cleanup() {
+    if [[ -n "$work_dir" ]]; then
+        limactl shell "$vm_name" rm -rf -- "$work_dir" || true
+    fi
+}
+trap cleanup EXIT
+
+for attempt in 1 2; do
+    work_dir=$(limactl shell "$vm_name" mktemp -d /tmp/lima-dev-setup.XXXXXXXXXX)
+    tar -C "$repo_dir" -cf - ansible dotfiles scripts/setup | \
+        limactl shell "$vm_name" tar -xf - -C "$work_dir"
+
+    ansible_options=("$@")
+    if [[ "$attempt" == 2 ]]; then
+        # The upgrade succeeded before the reboot, including explicitly forced upgrades.
+        ansible_options+=(-e force_os_upgrade=false)
+    fi
+    limactl shell "$vm_name" bash "$work_dir/scripts/setup" \
+        "${ansible_options[@]}" -e "lima_reboot_request_file=$work_dir/reboot-required"
+
+    # Check the per-run request separately so SSH or Ansible errors cannot trigger a reboot.
+    reboot_requested=$(limactl shell "$vm_name" bash -c '
+        if [[ -f "$1" ]]; then echo yes; else echo no; fi
+    ' -- "$work_dir/reboot-required")
+    case "$reboot_requested" in
+        no) exit 0 ;;
+        yes) ;;
+        *) echo 'Could not determine whether provisioning requested a reboot.' >&2; exit 1 ;;
+    esac
+
+    if [[ "$attempt" == 2 ]]; then
+        echo 'The guest still requires a reboot after restarting; stopping automatic retries.' >&2
+        exit 1
+    fi
+    cleanup
+    work_dir=
+    echo "Ubuntu requires a reboot. Restarting $vm_name, then resuming provisioning..."
+    limactl stop "$vm_name"
+    # Lima waits for the guest to be ready before returning.
+    limactl start "$vm_name"
+done

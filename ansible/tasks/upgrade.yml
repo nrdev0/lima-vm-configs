@@ -36,7 +36,22 @@
     path: /var/run/reboot-required
   register: guest_reboot
 
-- name: Stop provisioning until the guest has rebooted
+- name: Ask the host provisioning script to reboot the guest
+  when:
+    - guest_reboot.stat.exists
+    - not ansible_check_mode
+    - lima_reboot_request_file is defined
+  block:
+    - name: Record the reboot request for this provisioning run
+      ansible.builtin.copy:
+        content: "reboot required\n"
+        dest: "{{ lima_reboot_request_file }}"
+        mode: '0644'
+
+    - name: End this play so the host can reboot before installing tools
+      ansible.builtin.meta: end_play
+
+- name: Stop direct guest provisioning until the guest has rebooted
   ansible.builtin.fail:
     msg: >-
       Ubuntu requires a reboot before development tools can be configured.
