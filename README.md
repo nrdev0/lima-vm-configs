@@ -6,7 +6,18 @@ Lima owns VM resources, images, networking, mounts, and optional container
 runtimes. The guest bootstrap installs Ansible; the playbook manages development
 packages and user-level tools. Reapply it whenever your tool configuration changes.
 
-Install Lima 2.0 or newer on macOS, then create a VM:
+Install [Lima 2.2.1](https://github.com/lima-vm/lima/releases/tag/v2.2.1) or newer
+on macOS, then create a VM. Version 2.2.1 is the latest stable release as of
+2026-10-28 and supports the Ubuntu 26.04 networking workaround used here.
+
+```bash
+brew install lima
+# If Lima is already installed:
+# brew upgrade lima
+limactl --version
+```
+
+Create and provision the guest:
 
 ```bash
 # Apple Silicon
@@ -61,9 +72,8 @@ bash scripts/provision dev-python -e force_os_upgrade=true
 
 If that run requires a reboot, restart and rerun without `force_os_upgrade=true`.
 
-Review CPU, memory, and disk settings before creation. The original
-`dev-default` configurations remain available. VM settings are separate from
-the repeatable Ansible tool setup; changing the VM type requires recreation.
+Review CPU, memory, and disk settings before creation. VM settings are separate
+from the repeatable Ansible tool setup; changing the VM type requires recreation.
 
 `scripts/provision` requires a running VM. It copies the playbook, repository
 dotfiles, and guest bootstrap into a temporary guest directory, applies them,

@@ -1,6 +1,6 @@
 # Native Python development VM for macOS; provision after starting with:
 # bash scripts/provision dev-python
-minimumLimaVersion: 2.0.0
+minimumLimaVersion: 2.2.1
 vmType: vz
 os: Linux
 arch: aarch64
