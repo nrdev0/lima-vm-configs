@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
+# Run inside the Ubuntu guest as the regular Lima user.
 set -euo pipefail
-
-sudo apt update
-sudo apt upgrade
-
-sudo apt install curl unzip zip
-
-# setup sdkman and install Eclipse Temurin Java 25.0.4
-curl -fsSL "https://get.sdkman.io" | bash
-
-(
-    set +u
-    source "$HOME/.sdkman/bin/sdkman-init.sh"
-    sdk version
-    sdk install java 25.0.4-tem
-)
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ "$(id -u)" == 0 ]]; then
+    echo 'Run as the regular guest user; Ansible uses sudo for system packages.' >&2
+    exit 1
+fi
+if ! command -v ansible-playbook >/dev/null 2>&1; then
+    sudo apt-get update
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-core
+fi
+exec ansible-playbook -i "$repo_dir/ansible/inventory.ini" "$repo_dir/ansible/site.yml" "$@"

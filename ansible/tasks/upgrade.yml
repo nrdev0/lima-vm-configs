@@ -1,0 +1,49 @@
+---
+- name: Check whether the initial OS upgrade has completed
+  ansible.builtin.stat:
+    path: /var/lib/lima-dev-setup/initial-upgrade.done
+  register: initial_upgrade
+
+- name: Apply OS updates on initial provisioning or explicit request
+  when: not initial_upgrade.stat.exists or force_os_upgrade | bool
+  block:
+    - name: Refresh package indexes and upgrade installed packages
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: safe
+        force_apt_get: true
+        lock_timeout: 300
+
+    - name: Create the provisioning state directory
+      ansible.builtin.file:
+        path: /var/lib/lima-dev-setup
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Record the successful OS upgrade
+      ansible.builtin.copy:
+        content: "Initial OS upgrade completed successfully.\n"
+        dest: /var/lib/lima-dev-setup/initial-upgrade.done
+        owner: root
+        group: root
+        mode: '0644'
+      when: not ansible_check_mode
+
+- name: Check whether the guest requires a reboot
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: guest_reboot
+
+- name: Stop provisioning until the guest has rebooted
+  ansible.builtin.fail:
+    msg: >-
+      Ubuntu requires a reboot before development tools can be configured.
+      On the host, run 'limactl stop VM_NAME' and 'limactl start VM_NAME',
+      then rerun 'bash scripts/provision VM_NAME', replacing VM_NAME with your
+      instance name. A successfully completed OS upgrade is already recorded
+      and will not be repeated unless force_os_upgrade=true is still set.
+  when:
+    - guest_reboot.stat.exists
+    - not ansible_check_mode

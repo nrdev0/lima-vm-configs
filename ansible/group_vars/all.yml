@@ -1,0 +1,20 @@
+---
+# The first provisioning always upgrades; enable this to repeat it deliberately.
+force_os_upgrade: false
+
+dev_packages:
+  - build-essential
+  - ca-certificates
+  - curl
+  - git
+  - jq
+  - ripgrep
+  - tmux
+  - unzip
+  - zip
+  - zsh
+
+# Pin uv so provisioning does not silently change its version.
+uv_version: '0.13.5'
+# CPython has no official LTS edition. Use a stable minor or pin an exact patch.
+python_version: '3.15'

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Copy the configuration into a running VM and apply it there.
+set -euo pipefail
+if [[ $# -lt 1 ]]; then
+    echo "Usage: $0 VM_NAME [ansible-playbook options...]" >&2
+    exit 2
+fi
+vm_name="$1"
+shift
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+tar -C "$repo_dir" -cf - ansible dotfiles scripts/setup | \
+    limactl shell "$vm_name" bash -c '
+        set -euo pipefail
+        work_dir=$(mktemp -d)
+        trap '\''rm -rf -- "$work_dir"'\'' EXIT
+        tar -xf - -C "$work_dir"
+        bash "$work_dir/scripts/setup" "$@"
+    ' -- "$@"

@@ -1,0 +1,111 @@
+---
+- name: Configure the development guest
+  hosts: dev
+  gather_facts: true
+  vars:
+    uv_bin_dir: "{{ ansible_facts['env']['HOME'] }}/.local/bin"
+  pre_tasks:
+    - name: Upgrade the guest OS before configuring development tools
+      become: true
+      ansible.builtin.import_tasks: tasks/upgrade.yml
+      tags: os_upgrade
+  tasks:
+    - name: Install development packages
+      become: true
+      ansible.builtin.apt:
+        name: "{{ dev_packages }}"
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Create the user executable directory
+      ansible.builtin.file:
+        path: "{{ uv_bin_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Set zsh as the guest user's login shell
+      become: true
+      ansible.builtin.user:
+        name: "{{ ansible_facts['user_id'] }}"
+        shell: /bin/zsh
+
+    - name: Remove the previous managed Bash PATH blocks
+      ansible.builtin.blockinfile:
+        path: "{{ ansible_facts['env']['HOME'] }}/{{ item }}"
+        marker: '# {mark} ANSIBLE MANAGED USER PATH'
+        state: absent
+      loop:
+        - .profile
+        - .bashrc
+
+    - name: Install repository dotfiles
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../dotfiles/{{ item }}"
+        dest: "{{ ansible_facts['env']['HOME'] }}/{{ item }}"
+        mode: '0644'
+        backup: true
+      loop:
+        - .bash_profile
+        - .zshenv
+        - .zshrc
+        - .tmux.conf
+
+    - name: Check the installed uv version
+      ansible.builtin.command:
+        argv:
+          - "{{ uv_bin_dir }}/uv"
+          - --version
+      register: installed_uv
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Install the pinned uv version
+      when: installed_uv.rc != 0 or installed_uv.stdout.split()[1] != uv_version
+      block:
+        - name: Download the versioned uv installer
+          ansible.builtin.get_url:
+            url: "https://github.com/astral-sh/uv/releases/download/{{ uv_version }}/uv-installer.sh"
+            dest: "{{ ansible_facts['env']['HOME'] }}/.uv-install.sh"
+            mode: '0600'
+
+        - name: Run the uv installer
+          ansible.builtin.command:
+            argv:
+              - sh
+              - "{{ ansible_facts['env']['HOME'] }}/.uv-install.sh"
+          environment:
+            UV_UNMANAGED_INSTALL: "{{ uv_bin_dir }}"
+          when: not ansible_check_mode
+
+        - name: Remove the uv installer
+          ansible.builtin.file:
+            path: "{{ ansible_facts['env']['HOME'] }}/.uv-install.sh"
+            state: absent
+
+    - name: Check for the requested uv-managed Python
+      ansible.builtin.command:
+        argv:
+          - "{{ uv_bin_dir }}/uv"
+          - python
+          - find
+          - --managed-python
+          - --no-python-downloads
+          - "{{ python_version }}"
+      register: installed_python
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      when: not ansible_check_mode or installed_uv.rc == 0
+
+    - name: Install the requested Python version with uv
+      ansible.builtin.command:
+        argv:
+          - "{{ uv_bin_dir }}/uv"
+          - python
+          - install
+          - "{{ python_version }}"
+      when:
+        - not ansible_check_mode
+        - installed_python.rc != 0

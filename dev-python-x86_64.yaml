@@ -1,0 +1,30 @@
+# Native Python development VM for macOS; provision after starting with:
+# bash scripts/provision dev-python
+minimumLimaVersion: 2.0.0
+vmType: vz
+os: Linux
+arch: x86_64
+# Ubuntu 26.04 LTS image and checksum from Lima's Ubuntu template.
+images:
+  - location: https://cloud-images.ubuntu.com/releases/resolute/release-20261016/ubuntu-26.04-server-cloudimg-amd64.img
+    arch: x86_64
+    digest: sha256:5645d0318ad21f643ebb1ac4567514620e9893380b07b0201fda163baa5b7eb5
+    variant: server
+cpus: 4
+memory: 6GiB
+disk: 100GiB
+# Keep repositories and virtual environments on the guest filesystem.
+mounts: []
+# Apply OS upgrades deliberately instead of during every VM boot.
+upgradePackages: false
+# Enable a container runtime when the development workflow needs one.
+containerd:
+  system: false
+  user: false
+# Ubuntu 26.04 first-boot NIC rename workaround used by Lima's template.
+param:
+  internal_netplanOptional: "true"
+user:
+  # Ansible installs zsh and makes it the login shell after bootstrap.
+  shell: /bin/bash
+  passwordlessSudo: true
