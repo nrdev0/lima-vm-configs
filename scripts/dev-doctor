@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Read-only diagnostics: no installs, configuration changes, or automatic repairs.
+set -uo pipefail
+issues=0
+problem() {
+    printf 'ATTENTION: %s\n' "$*"
+    issues=$((issues + 1))
+}
+
+echo 'Development tools'
+for command_name in git gh uv python3 ansible-playbook zsh tmux; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+        problem "$command_name is missing from PATH"
+        continue
+    fi
+    if [[ "$command_name" == tmux ]]; then
+        version_args=-V
+    else
+        version_args=--version
+    fi
+    if version_output=$("$command_name" "$version_args" 2>&1); then
+        printf '  %s\n' "${version_output%%$'\n'*}"
+    else
+        problem "$command_name failed to report its version"
+    fi
+done
+
+if command -v uv >/dev/null 2>&1; then
+    if managed_python=$(uv python find --system --managed-python \
+        --no-python-downloads --no-project --no-config --offline --no-cache 2>/dev/null); then
+        printf 'Managed Python: %s\n' "$managed_python"
+        "$managed_python" --version || problem 'Managed Python could not start'
+    else
+        problem 'No usable uv-managed Python found; rerun provisioning'
+    fi
+fi
+
+echo
+echo 'Guest storage'
+if df -h "$HOME"; then
+    disk_used=$(df -Pk "$HOME" | awk 'NR == 2 {gsub(/%/, "", $5); print $5}')
+    if [[ "$disk_used" =~ ^[0-9]+$ ]] && (( disk_used >= 90 )); then
+        problem 'The home filesystem is at least 90% full'
+    fi
+else
+    problem 'Could not read available disk space'
+fi
+if [[ -f /var/run/reboot-required ]]; then
+    problem 'A reboot is pending; run the host provisioning script between work sessions'
+else
+    echo 'No pending reboot reported by Ubuntu.'
+fi
+
+echo
+echo 'Security update policy'
+if command -v apt-config >/dev/null 2>&1; then
+    if ! apt-config dump | awk '/^APT::Periodic::|^Unattended-Upgrade::Automatic-Reboot|^Unattended-Upgrade::Allowed-Origins|^Unattended-Upgrade::Origins-Pattern/'; then
+        problem 'Could not read the APT update policy'
+    fi
+    if policy_values=$(apt-config shell periodic APT::Periodic::Enable/b \
+        security APT::Periodic::Unattended-Upgrade refresh APT::Periodic::Update-Package-Lists \
+        reboot Unattended-Upgrade::Automatic-Reboot/b); then
+        if [[ "$policy_values" != *"periodic='true'"* || \
+              "$policy_values" != *"security='1'"* || "$policy_values" != *"refresh='1'"* ]]; then
+            problem 'Daily package index refresh and security updates are not configured'
+        fi
+        if [[ "$policy_values" != *"reboot='false'"* ]]; then
+            problem 'Automatic reboot prevention is not explicitly configured'
+        fi
+    else
+        problem 'Could not check the security-update settings'
+    fi
+else
+    problem 'apt-config is unavailable'
+fi
+if command -v systemctl >/dev/null 2>&1; then
+    for timer in apt-daily.timer apt-daily-upgrade.timer; do
+        if systemctl is-enabled --quiet "$timer" && systemctl is-active --quiet "$timer"; then
+            printf '  %s is enabled and active\n' "$timer"
+        else
+            problem "$timer is not enabled and active"
+        fi
+    done
+else
+    problem 'systemctl is unavailable'
+fi
+
+echo
+echo 'Git identity and optional GitHub access'
+if command -v git >/dev/null 2>&1; then
+    commit_name=$(git config --get user.name || true)
+    commit_email=$(git config --get user.email || true)
+    if [[ -n "$commit_name" && -n "$commit_email" ]]; then
+        printf '  Effective commit identity: %s <%s>\n' "$commit_name" "$commit_email"
+    else
+        echo '  Commit identity is incomplete; run setup-git when ready.'
+    fi
+fi
+if command -v gh >/dev/null 2>&1; then
+    if github_login=$(GH_PROMPT_DISABLED=1 timeout 15s gh api --hostname github.com user --jq .login 2>/dev/null); then
+        printf '  GitHub API authentication works for: %s\n' "$github_login"
+        echo '  Access to individual repositories depends on account permissions.'
+    else
+        echo '  GitHub access could not be verified (login, network, or service availability).'
+        echo '  Run setup-git if you want GitHub access.'
+    fi
+fi
+
+echo
+if (( issues > 0 )); then
+    printf '%s required checks need attention.\n' "$issues"
+    exit 1
+fi
+echo 'Required checks passed. Optional Git identity and GitHub notices are shown above.'

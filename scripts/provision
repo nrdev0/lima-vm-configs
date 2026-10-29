@@ -18,16 +18,17 @@ trap cleanup EXIT
 
 for attempt in 1 2; do
     work_dir=$(limactl shell "$vm_name" mktemp -d /tmp/lima-dev-setup.XXXXXXXXXX)
-    tar -C "$repo_dir" -cf - ansible dotfiles scripts/setup scripts/setup-git | \
+    tar -C "$repo_dir" -cf - ansible dotfiles scripts/setup scripts/setup-git scripts/dev-doctor | \
         limactl shell "$vm_name" tar -xf - -C "$work_dir"
 
-    ansible_options=("$@")
+    # Keep this array nonempty: Bash 3.2 treats empty arrays as unset with set -u.
+    ansible_options=("$@" -e "lima_reboot_request_file=$work_dir/reboot-required")
     if [[ "$attempt" == 2 ]]; then
         # The upgrade succeeded before the reboot, including explicitly forced upgrades.
         ansible_options+=(-e force_os_upgrade=false)
     fi
     limactl shell "$vm_name" bash "$work_dir/scripts/setup" \
-        "${ansible_options[@]}" -e "lima_reboot_request_file=$work_dir/reboot-required"
+        "${ansible_options[@]}"
 
     # Check the per-run request separately so SSH or Ansible errors cannot trigger a reboot.
     reboot_requested=$(limactl shell "$vm_name" bash -c '

@@ -17,6 +17,15 @@
         state: present
         update_cache: true
         cache_valid_time: 3600
+        lock_timeout: 300
+      register: package_install
+      until: package_install is succeeded
+      retries: 3
+      delay: 10
+
+    - name: Configure automatic security updates without automatic reboots
+      become: true
+      ansible.builtin.import_tasks: tasks/security-updates.yml
 
     - name: Create the user executable directory
       ansible.builtin.file:
@@ -24,11 +33,20 @@
         state: directory
         mode: '0755'
 
-    - name: Install the interactive Git and GitHub setup command
-      ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../scripts/setup-git"
-        dest: "{{ uv_bin_dir }}/setup-git"
+    - name: Create the guest project directory
+      ansible.builtin.file:
+        path: "{{ ansible_facts['env']['HOME'] }}/src"
+        state: directory
         mode: '0755'
+
+    - name: Install guest setup and diagnostic commands
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/{{ item }}"
+        dest: "{{ uv_bin_dir }}/{{ item }}"
+        mode: '0755'
+      loop:
+        - setup-git
+        - dev-doctor
 
     - name: Set zsh as the guest user's login shell
       become: true

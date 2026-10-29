@@ -1,0 +1,29 @@
+---
+- name: Manage the unattended security update policy
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/99-lima-dev-security-updates
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      // Managed by lima-vm-configs. Allow the base release and security pocket,
+      // but leave general updates and distribution upgrades to explicit maintenance.
+      #clear Unattended-Upgrade::Allowed-Origins;
+      #clear Unattended-Upgrade::Origins-Pattern;
+      Unattended-Upgrade::Allowed-Origins {
+          "${distro_id}:${distro_codename}";
+          "${distro_id}:${distro_codename}-security";
+      };
+      APT::Periodic::Enable "1";
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      Unattended-Upgrade::Automatic-Reboot "false";
+
+- name: Enable daily package index and security update timers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
