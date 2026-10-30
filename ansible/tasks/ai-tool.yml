@@ -1,0 +1,67 @@
+---
+- name: "Check the installed {{ ai_tool.name }} CLI"
+  ansible.builtin.command:
+    argv:
+      - timeout
+      - 30s
+      - "{{ user_bin_dir }}/{{ ai_tool.name }}"
+      - --version
+  register: installed_ai_tool
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: "Report the planned {{ ai_tool.name }} installation"
+  ansible.builtin.debug:
+    msg: "Would run the native {{ ai_tool.name }} installer for the guest user."
+  changed_when: true
+  when:
+    - ansible_check_mode
+    - installed_ai_tool.rc != 0 or force_ai_tools_update | bool
+
+- name: "Install or update {{ ai_tool.name }}"
+  when:
+    - not ansible_check_mode
+    - installed_ai_tool.rc != 0 or force_ai_tools_update | bool
+  block:
+    - name: Create a temporary installer directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: lima-ai-tool.
+      register: ai_tool_temp
+
+    - name: "Download the official {{ ai_tool.name }} installer"
+      ansible.builtin.get_url:
+        url: "{{ ai_tool.installer_url }}"
+        dest: "{{ ai_tool_temp.path }}/install.sh"
+        mode: '0600'
+        timeout: 60
+      register: ai_tool_download
+      until: ai_tool_download is succeeded
+      retries: 3
+      delay: 10
+
+    - name: "Run the native {{ ai_tool.name }} installer"
+      ansible.builtin.command:
+        argv:
+          - "{{ ai_tool.installer_shell }}"
+          - "{{ ai_tool_temp.path }}/install.sh"
+      environment: >-
+        {{ {'PATH': user_bin_dir ~ ':' ~ ansible_facts['env']['PATH']}
+           | combine(ai_tool.installer_environment | default({})) }}
+
+    - name: "Verify that {{ ai_tool.name }} starts successfully"
+      ansible.builtin.command:
+        argv:
+          - timeout
+          - 30s
+          - "{{ user_bin_dir }}/{{ ai_tool.name }}"
+          - --version
+      changed_when: false
+
+  always:
+    - name: Remove the temporary installer directory
+      ansible.builtin.file:
+        path: "{{ ai_tool_temp.path }}"
+        state: absent
+      when: ai_tool_temp.path is defined

@@ -2,6 +2,10 @@
 # The first provisioning always upgrades; enable this to repeat it deliberately.
 force_os_upgrade: false
 
+# Install missing AI CLIs; rerun their native installers only when requested.
+# Their own update behavior remains at the vendor defaults.
+force_ai_tools_update: false
+
 dev_packages:
   - build-essential
   - ca-certificates
@@ -9,6 +13,8 @@ dev_packages:
   - git
   - gh
   - jq
+  - ncurses-bin
+  - ncurses-term
   - ripgrep
   - tmux
   - unattended-upgrades

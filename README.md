@@ -1,243 +1,227 @@
-# lima-vm-configurations
+# Lima development VM
 
-Ubuntu development guests managed with [Lima](https://lima-vm.io/) and Ansible.
+Use [Lima](https://lima-vm.io/) to run an Ubuntu development virtual machine (VM).
+Use Ansible to install and configure its tools.
 
-Lima owns VM resources, images, networking, mounts, and optional container
-runtimes. The guest bootstrap installs Ansible; the playbook manages development
-packages and user-level tools. Reapply it whenever your tool configuration changes.
+In this guide, **host** means your Mac. **VM** means the Ubuntu system.
+Run host commands from this repository. Run VM commands as the regular user, without `sudo`.
+Ansible uses `sudo` when necessary.
 
-Install [Lima 2.2.1](https://github.com/lima-vm/lima/releases/tag/v2.2.1) or newer
-on macOS, then create a VM. Version 2.2.1 is the latest stable release as of
-2026-10-28 and supports the Ubuntu 26.04 networking workaround used here.
+The VM has Ubuntu 26.04, 4 CPUs, 6 GiB of memory, and a 100 GiB disk.
+It includes these tools:
+
+- Python 3.15 and uv.
+- Git, GitHub CLI, curl, jq, ripgrep, and build tools.
+- zsh and tmux.
+- Codex CLI and Claude Code.
+
+Projects stay inside the VM under `~/src`. The VM does not share host folders.
+Containerd is disabled.
+
+## Set up the VM
+
+1. **On the host**, install Lima:
+
+   ```bash
+   brew install lima
+   ```
+
+   If Lima is installed, use `brew upgrade lima` instead.
+   Use `limactl --version` to check the version. You need version 2.2.1 or later.
+
+2. Create the VM. Select the command for your Mac.
+
+   **Apple Silicon:**
+
+   ```bash
+   limactl start --name=dev-python ./dev-python-aarch64.yaml
+   ```
+
+   **Intel Mac with macOS 15.5 or later:**
+
+   ```bash
+   limactl start --name=dev-python ./dev-python-x86_64.yaml
+   ```
+
+3. Install the tools:
+
+   ```bash
+   bash scripts/provision dev-python
+   ```
+
+   This script installs Ansible inside the VM. It updates Ubuntu packages during the first setup.
+   If necessary, it restarts the VM once and continues.
+
+4. Open a VM shell:
+
+   ```bash
+   limactl shell dev-python
+   ```
+
+5. **In the VM**, check the setup:
+
+   ```bash
+   dev-doctor
+   ```
+
+   This command checks tools, storage, restart requirements, and security updates. It does not repair problems.
+   Ubuntu's system Python and uv's development Python can have different versions. This is normal.
+
+## Configure accounts
+
+**In the VM**, run this optional command to configure your Git identity and GitHub access:
 
 ```bash
-brew install lima
-# If Lima is already installed:
-# brew upgrade lima
-limactl --version
-```
-
-Create and provision the guest:
-
-```bash
-# Apple Silicon
-limactl start --name=dev-python ./dev-python-aarch64.yaml
-# Intel Mac alternative (macOS 15.5 or newer):
-# limactl start --name=dev-python ./dev-python-x86_64.yaml
-bash scripts/provision dev-python
-limactl shell dev-python
-# Inside the guest, optionally configure Git identity and GitHub authentication:
 setup-git
-dev-doctor
 ```
 
-Both `dev-python` configurations target native macOS virtualization with VZ.
-Use `aarch64` on Apple Silicon and `x86_64` on an Intel Mac. The Ubuntu 26.04
-image requires macOS 15.5 or newer on Intel with VZ; for Linux hosts or older
-Intel Macs, use `vmType: qemu` instead. Both allocate 4 CPUs, 6 GiB RAM, and a
-100 GiB virtual disk. This is the starting profile for an M3 Air with 16 GB RAM.
+For Codex, run `codex` from a project folder. Follow its sign-in instructions.
+For Claude Code, run `claude` from a project folder. Follow its sign-in instructions.
 
-Both use Lima's default guest user and no host directory mounts. Keep projects
-under `~/src` inside the guest and connect your editor using Lima's generated
-SSH configuration (`~/.lima/dev-python/ssh.config` with the default Lima home).
-Push or back up guest-local work before deleting or recreating the VM.
+Each service needs separate authentication. Ansible does not copy host credentials or sign you in.
+`dev-doctor` checks the AI tool versions, but it does not check their authentication.
 
-To back up projects, run this from the repository on your Mac while the VM is
-running. Pause builds and other processes writing to the projects during backup:
+## Use the VM
+
+**On the host**, use these commands:
+
+| Task | Command |
+| --- | --- |
+| Show VM status | `limactl list` |
+| Start the VM | `limactl start dev-python` |
+| Open a VM shell | `limactl shell dev-python` |
+| Stop the VM | `limactl stop dev-python` |
+
+Starting the VM does not run Ansible. Installed tools and projects stay on the VM disk.
+For an SSH editor connection, use `~/.lima/dev-python/ssh.config` on the host.
+
+If you use Ghostty, run provisioning from Ghostty on the host.
+The script copies its terminal definition into the VM when available on the host.
+Outside tmux, keep the host's `TERM` value. Inside tmux, the configuration uses `tmux-256color`.
+Do not set `TERM` in your shell configuration.
+
+If you see an unknown terminal error, run this command on the host:
 
 ```bash
-bash scripts/backup dev-python
-# Or choose a destination on your Mac or an external disk:
-bash scripts/backup dev-python "$HOME/Backups/dev-python"
+TERM=xterm-256color bash scripts/provision dev-python
 ```
 
-The default destination is `~/Backups/lima` on the host. Each invocation creates
-a new, private snapshot directory and prints its path. It contains a compressed
-archive, a SHA-256 checksum, and the source VM name. The archive includes the
-contents of the guest's `~/src`, including `.git`, unpushed commits, uncommitted
-changes, and untracked files. It excludes `.venv`, `__pycache__`, `.pytest_cache`,
-`.ruff_cache`, `.mypy_cache`, `.tox`, and `.nox`. Symlinks are preserved; their
-targets outside `~/src` are not included. Failed backups are removed.
+Then open a new VM shell. For an existing tmux server, run `tmux source-file ~/.tmux.conf` inside the VM.
+Open a new tmux window to use the updated terminal type.
 
-Backups are manual: take one regularly and before maintenance or VM deletion.
-Snapshots are not automatically pruned. They may contain `.env` files and other
-project secrets and are not encrypted by these scripts; keep the destination
-private and include it in your host backup plan. Running databases need their own
-consistent dumps. Guest-global settings and GitHub credentials are not included.
-
-Verify recovery while the original VM still exists, or restore to a newly
-provisioned guest. Replace the snapshot path below with the one backup printed:
+**In the VM**, create a Python project:
 
 ```bash
-bash scripts/restore dev-python "$HOME/Backups/lima/projects-TIMESTAMP.SUFFIX"
-```
-
-Restore verifies the checksum, then extracts into a new `~/src-restored.*`
-directory inside the guest. It never merges into or overwrites `~/src`. Inspect
-the restored projects and their Git status, confirm untracked files are present,
-and run `uv sync --locked` in a restored project to recreate its environment.
-Run that project's normal checks before relying on the backup. Move recovered
-projects into `~/src` only after reviewing them.
-
-Containerd is disabled for this Python baseline. Set `containerd.user: true`
-to enable Lima's rootless containerd and nerdctl. Workflows requiring the Docker
-API, such as many Testcontainers setups, need a compatible runtime.
-
-Ubuntu images are pinned to the same dated 26.04 LTS release for both
-architectures, without a moving fallback. The URLs and checksums come from
-[Lima's Ubuntu 26.04 template](https://github.com/lima-vm/lima/blob/9ad9d38eecfe9a79df13dc3e6a960a76f5c692d2/templates/_images/ubuntu-26.04.yaml).
-Ubuntu may retire dated images; refresh the URL and checksum together when
-needed. The networking workaround in `param` follows that upstream template.
-
-On initial provisioning, Ansible refreshes package indexes and upgrades installed
-OS packages before configuring development tools. It records success in
-`/var/lib/lima-dev-setup/initial-upgrade.done`; subsequent runs skip that upgrade.
-Existing guests without this marker also upgrade on their next provisioning run.
-Lima's `upgradePackages: false` keeps upgrades from running on every boot.
-Bootstrap retries failed APT commands up to three times, waits up to five minutes
-for package-install locks per attempt, and retries download failures. Ansible's
-package tasks also use bounded retries and a five-minute package-lock timeout.
-
-If Ubuntu requires a reboot, the host's `scripts/provision` automatically stops
-and starts the VM, waits for Lima to report it ready, and resumes setup before
-installing tools. The completed OS upgrade is skipped on the resumed run.
-This also handles guests left at the reboot-required error by an earlier run:
-just rerun `bash scripts/provision dev-python` from the host.
-Automatic recovery allows one restart per invocation; other provisioning errors
-stop immediately. A restart disconnects any active guest sessions.
-
-For later maintenance, explicitly request another upgrade:
-
-```bash
-bash scripts/provision dev-python -e force_os_upgrade=true
-```
-
-If that run requires a reboot, provisioning resumes with `force_os_upgrade=false`
-so the explicit upgrade is not repeated.
-
-After provisioning, Ubuntu's daily APT timers refresh package indexes and apply
-security updates through `unattended-upgrades`. The managed policy allows the
-base release and security pocket, leaving general updates to explicit maintenance.
-It disables automatic reboots; a pending reboot is reported by `dev-doctor` and
-handled when you next run provisioning. Schedule deliberate maintenance between
-work sessions, for example monthly. Timers run while the VM is running and may
-catch up after it starts. The policy is in `ansible/tasks/security-updates.yml`.
-
-Review CPU, memory, and disk settings before creation. VM settings are separate
-from the repeatable Ansible tool setup; changing the VM type requires recreation.
-
-`scripts/provision` requires a running VM. It copies the playbook, repository
-dotfiles, and guest bootstrap into a temporary guest directory, applies them,
-and removes that copy.
-It also installs `setup-git` and `dev-doctor` in `~/.local/bin` so both commands
-remain available after the temporary copy is removed, and creates `~/src`.
-No host Ansible installation or repository mount is required. Run it as the
-normal Lima user with passwordless sudo enabled, as in these VM definitions.
-
-Edit `ansible/group_vars/all.yml` to choose packages, the pinned uv version, and
-Python version. Python 3.15 is a stable release, not an LTS edition: CPython
-releases receive roughly five years of support. Use 3.14 instead if a project's
-dependencies do not yet support 3.15. For example:
-
-```bash
-bash scripts/provision dev-python -e python_version=3.14
-bash scripts/provision dev-python --syntax-check
-```
-
-Ansible installs uv and Python for the regular guest user. It keeps Ubuntu's
-system Python for Ansible and OS tools. uv installs versioned executables such
-as `python3.15`; projects choose their own interpreter and isolated environment.
-Ansible also installs tmux and zsh, and makes zsh the guest user's login shell.
-Reconnect your SSH editor or open a new session after provisioning. Lima keeps
-Bash configured for bootstrap; the managed `.bash_profile` hands interactive
-`limactl shell` sessions over to zsh. Noninteractive Bash scripts keep using Bash.
-
-Dotfiles live in this repository under `dotfiles/`. Ansible copies `.zshenv`,
-`.zshrc`, `.bash_profile`, and `.tmux.conf` into the guest home directory and
-backs up existing files when replacing them. Edit the repository copies and
-reprovision to apply changes; edits made only in the guest will be overwritten.
-The zsh setup adds `~/.local/bin` to PATH, enables completion and persistent
-history, and uses a basic prompt. New tmux windows use zsh.
-
-Git and GitHub CLI (`gh`) are installed by Ansible. Run `setup-git` inside an
-interactive guest shell, without sudo, to configure them. The command offers:
-
-- Commit display name and email, with existing guest Git settings as defaults.
-  Use your verified GitHub email or the `noreply` address from your GitHub email
-  settings. You can skip identity configuration to preserve it unchanged.
-- Browser sign-in for HTTPS, reuse of an existing GitHub CLI login, or skipping
-  authentication. Complete browser sign-in on your Mac using the URL and device
-  code shown in the terminal. An existing valid login is the default when found.
-
-Identity configuration sets `user.useConfigOnly=true` to prevent Git from
-guessing an identity, and defaults new repositories to `main` if no global
-default branch is already configured. Repository-specific settings still take
-precedence. Other Git preferences are preserved.
-
-After sign-in, `setup-git` checks authentication and makes GitHub CLI the HTTPS
-credential helper for GitHub. Use `gh repo clone OWNER/REPO` or an HTTPS URL such
-as `git clone https://github.com/OWNER/REPO.git`. Existing SSH remotes are not
-converted. Authentication persists across VM restarts; recreating the guest
-requires signing in again. On a guest without a system credential store, GitHub
-CLI may store its token in its guest configuration file. Tokens are not passed
-through Ansible or saved in this repository.
-
-Git setup is optional and separate from provisioning. Routine provisioning never
-prompts for credentials or changes commit identity. To adjust identity or sign
-in later, run `setup-git` again. Your Mac's Git settings are not copied into the
-guest automatically.
-
-Run `dev-doctor` in the guest after provisioning or when troubleshooting. It
-reports tool versions, the available managed Python, disk space, pending reboots,
-the effective security-update policy and timer status, Git identity, and GitHub
-API authentication. It does not install tools, modify configuration, or repair
-anything. The GitHub check needs network access and does not print tokens. Git
-identity reflects repository overrides if you run it inside a repository.
-Missing tools, a pending reboot, disk usage of at least 90%, inactive update
-timers, or missing daily-update/reboot-prevention settings cause a nonzero exit;
-optional Git identity/authentication notices do not.
-
-For a new project inside the guest:
-
-```bash
+cd ~/src
 uv init --python 3.15 my-project
 cd my-project
-uv add requests
 uv add --dev ruff pytest
 uv run python --version
 uv run ruff check .
 ```
 
-Commit `pyproject.toml`, `.python-version`, and `uv.lock`. Use `uv sync --locked`
-to reproduce the locked dependencies in CI or another checkout. Virtual
-environments (`.venv`) stay local and should not be committed.
-Keep linting, testing, and type-checking tools in each project's development
-dependencies instead of installing them globally in the VM. Once the project has
-tests, run `uv run pytest`; add a type checker when the project needs one. CI
-should select the same Python version and uv version, run `uv sync --locked`,
-then run the same lint and test commands. Pin an exact Python patch in the
-project's `.python-version` when that level of reproducibility is required.
+Use `uv run` to run commands in the project's Python environment.
+Commit `pyproject.toml`, `.python-version`, and `uv.lock`. Do not commit `.venv`.
+After you clone an existing project, run `uv sync --locked` in its folder.
 
-After the initial OS upgrade, routine provisioning installs missing packages.
-It pins uv and disables uv self-updates; change `uv_version` and reprovision
-to update it.
-A Python minor version installs the latest patch known to that uv release when
-missing. Existing Python installations are kept; use `uv python upgrade 3.15`
-for deliberate patch upgrades, or set `python_version` to an exact patch for
-repeatable interpreter selection. Changing Python versions leaves older
-installations and project version choices in place.
+## Update the VM
 
-For a repository already available inside the guest, use `bash scripts/setup`
-directly. This direct guest command still stops with manual restart instructions
-when a reboot is required; automatic restart is handled by the host script.
-Ansible options are forwarded by both scripts. `--check --diff` never triggers
-an automatic restart and is most useful after the first successful setup; it
-still bootstraps Ansible if missing, and a fresh guest cannot fully preview uv
-and Python installation.
+Ubuntu installs security updates each day while the VM runs. These updates do not cause an automatic restart.
+Use the commands below to request other updates.
 
-For manual validation after changing this repository, provision a disposable VM
-with no extra Ansible options, run provisioning a second time, and check that the
-tools remain usable without an unnecessary restart. Run `dev-doctor`, exercise
-GitHub sign-in if needed, and back up and restore a project containing both
-committed and untracked files. Also verify `--check --diff` does not restart the
-VM. Use the host's bundled Bash for these checks to cover macOS Bash 3.2.
+Before maintenance, back up your projects. Close active AI sessions.
+
+**On the host**, update Ubuntu packages and both AI tools:
+
+```bash
+bash scripts/provision dev-python \
+  -e force_os_upgrade=true \
+  -e force_ai_tools_update=true
+```
+
+The flags control separate updates:
+
+| Flag | Effect |
+| --- | --- |
+| `force_os_upgrade=true` | Update installed Ubuntu packages through APT, including curl, Git, and tmux. |
+| `force_ai_tools_update=true` | Run the native Codex and Claude Code installers again. |
+
+Use either flag alone, or use both. This command does not change the Ubuntu release.
+If a restart is necessary, the script restarts the VM once and continues. A restart disconnects active sessions.
+
+To apply configuration changes without these update requests, run:
+
+```bash
+bash scripts/provision dev-python
+```
+
+After the first setup, this command installs missing packages and applies configuration changes.
+It also installs missing or failed AI tools. It does not update working AI tools through their installers.
+The AI tools keep their own default update behavior.
+
+**In the VM**, use these commands for Python and project updates:
+
+| Task | Command |
+| --- | --- |
+| Update Python 3.15 to a newer patch version | `uv python upgrade 3.15` |
+| Update project dependencies | `uv lock --upgrade` |
+| Install the locked dependencies | `uv sync --locked` |
+| Run project tests, if present | `uv run pytest` |
+| Check the VM after updates | `dev-doctor` |
+
+Run project commands in the project folder. Review and commit lockfile changes after successful tests.
+
+## Change the configuration
+
+| File | Settings |
+| --- | --- |
+| `dev-python-*.yaml` | VM image, CPU, memory, disk, and container runtime. |
+| `ansible/group_vars/all.yml` | Ubuntu packages, uv version, and Python version. |
+| `dotfiles/` | Shell and tmux configuration. |
+
+Change `uv_version` to update uv. Change `python_version` to install another Python version.
+Then run `bash scripts/provision dev-python` on the host.
+Existing Python installations and project version selections stay unchanged.
+
+Edit dotfiles in this repository. Ansible replaces the VM copies and backs up changed files.
+
+To preview Ansible changes, run this command on the host:
+
+```bash
+bash scripts/provision dev-python --check --diff
+```
+
+Use this preview after the first successful setup. It does not restart the VM.
+On a new VM, it can install Ansible and cannot fully preview tool installation.
+
+## Back up and restore projects
+
+Backups are manual. Make a backup before maintenance or VM deletion.
+Keep the VM running. Stop processes that write to project files.
+
+**On the host**, create a backup:
+
+```bash
+bash scripts/backup dev-python
+```
+
+The script prints the backup path under `~/Backups/lima`.
+Backups include `~/src`, Git history, and files you have not committed.
+They exclude virtual environments, common caches, and VM account settings.
+Files outside `~/src` are not included, even through symbolic links.
+
+Backups can contain project secrets. They are not encrypted. Keep them private.
+Back up active databases separately. Delete old backups manually when no longer needed.
+
+To restore a backup, replace the example path with the printed backup path:
+
+```bash
+bash scripts/restore dev-python "$HOME/Backups/lima/projects-TIMESTAMP.SUFFIX"
+```
+
+The script checks the backup checksum. It restores files into a new `~/src-restored.*` folder in the VM.
+It does not replace `~/src`.
+
+Check the restored files before you move them into `~/src`.
+Run `uv sync --locked` and your project tests in each restored project.
+Verify the backup before you delete the original VM.

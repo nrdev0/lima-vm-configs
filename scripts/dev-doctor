@@ -8,7 +8,7 @@ problem() {
 }
 
 echo 'Development tools'
-for command_name in git gh uv python3 ansible-playbook zsh tmux; do
+for command_name in git gh uv python3 ansible-playbook zsh tmux codex claude; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
         problem "$command_name is missing from PATH"
         continue
@@ -33,6 +33,20 @@ if command -v uv >/dev/null 2>&1; then
     else
         problem 'No usable uv-managed Python found; rerun provisioning'
     fi
+fi
+
+echo
+echo 'Terminal support'
+if command -v infocmp >/dev/null 2>&1; then
+    for terminal_name in "${TERM:-dumb}" tmux-256color; do
+        if infocmp -x "$terminal_name" >/dev/null 2>&1; then
+            printf '  Terminal definition available: %s\n' "$terminal_name"
+        else
+            problem "Missing terminal definition: $terminal_name; rerun provisioning from the host terminal"
+        fi
+    done
+else
+    problem 'infocmp is unavailable; rerun provisioning'
 fi
 
 echo

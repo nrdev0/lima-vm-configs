@@ -3,7 +3,7 @@
   hosts: dev
   gather_facts: true
   vars:
-    uv_bin_dir: "{{ ansible_facts['env']['HOME'] }}/.local/bin"
+    user_bin_dir: "{{ ansible_facts['env']['HOME'] }}/.local/bin"
   pre_tasks:
     - name: Upgrade the guest OS before configuring development tools
       become: true
@@ -27,9 +27,12 @@
       become: true
       ansible.builtin.import_tasks: tasks/security-updates.yml
 
+    - name: Install the host Ghostty terminal definition
+      ansible.builtin.import_tasks: tasks/terminfo.yml
+
     - name: Create the user executable directory
       ansible.builtin.file:
-        path: "{{ uv_bin_dir }}"
+        path: "{{ user_bin_dir }}"
         state: directory
         mode: '0755'
 
@@ -39,10 +42,27 @@
         state: directory
         mode: '0755'
 
+    - name: Install native AI coding tools for the guest user
+      ansible.builtin.include_tasks: tasks/ai-tool.yml
+      loop:
+        - name: codex
+          installer_url: https://chatgpt.com/codex/install.sh
+          installer_shell: sh
+          installer_environment:
+            CODEX_NON_INTERACTIVE: '1'
+            CODEX_INSTALL_DIR: "{{ user_bin_dir }}"
+            CODEX_RELEASE: latest
+        - name: claude
+          installer_url: https://claude.ai/install.sh
+          installer_shell: bash
+      loop_control:
+        loop_var: ai_tool
+        label: "{{ ai_tool.name }}"
+
     - name: Install guest setup and diagnostic commands
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../scripts/{{ item }}"
-        dest: "{{ uv_bin_dir }}/{{ item }}"
+        dest: "{{ user_bin_dir }}/{{ item }}"
         mode: '0755'
       loop:
         - setup-git
@@ -78,7 +98,7 @@
     - name: Check the installed uv version
       ansible.builtin.command:
         argv:
-          - "{{ uv_bin_dir }}/uv"
+          - "{{ user_bin_dir }}/uv"
           - --version
       register: installed_uv
       changed_when: false
@@ -100,7 +120,7 @@
               - sh
               - "{{ ansible_facts['env']['HOME'] }}/.uv-install.sh"
           environment:
-            UV_UNMANAGED_INSTALL: "{{ uv_bin_dir }}"
+            UV_UNMANAGED_INSTALL: "{{ user_bin_dir }}"
           when: not ansible_check_mode
 
         - name: Remove the uv installer
@@ -111,7 +131,7 @@
     - name: Check for the requested uv-managed Python
       ansible.builtin.command:
         argv:
-          - "{{ uv_bin_dir }}/uv"
+          - "{{ user_bin_dir }}/uv"
           - python
           - find
           - --managed-python
@@ -126,7 +146,7 @@
     - name: Install the requested Python version with uv
       ansible.builtin.command:
         argv:
-          - "{{ uv_bin_dir }}/uv"
+          - "{{ user_bin_dir }}/uv"
           - python
           - install
           - "{{ python_version }}"

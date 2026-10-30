@@ -1,0 +1,42 @@
+---
+- name: Check for the Ghostty definition supplied by the host
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../ghostty.terminfo"
+  register: host_ghostty_terminfo
+
+- name: Configure Ghostty terminal support for the guest user
+  when: host_ghostty_terminfo.stat.exists
+  block:
+    - name: Create the user terminal definition directory
+      ansible.builtin.file:
+        path: "{{ ansible_facts['env']['HOME'] }}/.terminfo"
+        state: directory
+        mode: '0755'
+
+    - name: Save the host Ghostty terminal definition
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../ghostty.terminfo"
+        dest: "{{ ansible_facts['env']['HOME'] }}/.terminfo/ghostty.terminfo"
+        mode: '0644'
+      register: ghostty_terminfo_source
+
+    - name: Check the compiled Ghostty terminal definition
+      ansible.builtin.command:
+        argv:
+          - infocmp
+          - -x
+          - xterm-ghostty
+      register: installed_ghostty_terminfo
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Compile the Ghostty terminal definition
+      ansible.builtin.command:
+        argv:
+          - tic
+          - -x
+          - -o
+          - "{{ ansible_facts['env']['HOME'] }}/.terminfo"
+          - "{{ ansible_facts['env']['HOME'] }}/.terminfo/ghostty.terminfo"
+      when: ghostty_terminfo_source.changed or installed_ghostty_terminfo.rc != 0
