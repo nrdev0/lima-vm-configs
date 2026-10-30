@@ -8,6 +8,9 @@ Run host commands from this repository. Run VM commands as the regular user, wit
 Ansible uses `sudo` when necessary.
 
 The VM has Ubuntu 26.04, 4 CPUs, 6 GiB of memory, and a 100 GiB disk.
+The configuration tries a dated image with a pinned checksum first. If Ubuntu
+has removed that image, it falls back to the latest Ubuntu 26.04 image, which
+can change over time and does not use the dated image's checksum.
 It includes these tools:
 
 - Python 3.15 and uv.

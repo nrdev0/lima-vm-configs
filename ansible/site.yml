@@ -105,28 +105,60 @@
       failed_when: false
       check_mode: false
 
+    - name: Report the planned uv installation
+      ansible.builtin.debug:
+        msg: "Would install uv {{ uv_version }} for the guest user."
+      changed_when: true
+      when:
+        - ansible_check_mode
+        - installed_uv.rc != 0 or installed_uv.stdout.split()[1] != uv_version
+
     - name: Install the pinned uv version
-      when: installed_uv.rc != 0 or installed_uv.stdout.split()[1] != uv_version
+      when:
+        - not ansible_check_mode
+        - installed_uv.rc != 0 or installed_uv.stdout.split()[1] != uv_version
       block:
+        - name: Create a temporary uv installer directory
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: lima-uv.
+          register: uv_installer_temp
+
         - name: Download the versioned uv installer
           ansible.builtin.get_url:
             url: "https://github.com/astral-sh/uv/releases/download/{{ uv_version }}/uv-installer.sh"
-            dest: "{{ ansible_facts['env']['HOME'] }}/.uv-install.sh"
+            dest: "{{ uv_installer_temp.path }}/install.sh"
             mode: '0600'
 
         - name: Run the uv installer
           ansible.builtin.command:
             argv:
               - sh
-              - "{{ ansible_facts['env']['HOME'] }}/.uv-install.sh"
+              - "{{ uv_installer_temp.path }}/install.sh"
           environment:
             UV_UNMANAGED_INSTALL: "{{ user_bin_dir }}"
-          when: not ansible_check_mode
 
-        - name: Remove the uv installer
+        - name: Read the installed uv version
+          ansible.builtin.command:
+            argv:
+              - "{{ user_bin_dir }}/uv"
+              - --version
+          register: verified_uv
+          changed_when: false
+
+        - name: Verify that uv matches the pinned version
+          ansible.builtin.assert:
+            that:
+              - verified_uv.stdout.split() | length >= 2
+              - verified_uv.stdout.split()[1] == uv_version
+            fail_msg: "Expected uv {{ uv_version }}, got: {{ verified_uv.stdout }}"
+
+      always:
+        - name: Remove the temporary uv installer directory
           ansible.builtin.file:
-            path: "{{ ansible_facts['env']['HOME'] }}/.uv-install.sh"
+            path: "{{ uv_installer_temp.path }}"
             state: absent
+          when: uv_installer_temp.path is defined
 
     - name: Check for the requested uv-managed Python
       ansible.builtin.command:
